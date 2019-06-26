@@ -1,0 +1,4 @@
+# An example parameter file for the polymer program
+var Nm 100
+list k 25.0 30.0
+var a 1.5
