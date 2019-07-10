@@ -23,6 +23,8 @@
 #include "energy.h"
 #include "rng.c"
 
+#define INTERNAL_STEPS 10
+
 void usage( const char* argv0);
 int get_cl_args( int argc, const char **argv,
                  char *parameter_filename, int *n);
@@ -30,6 +32,7 @@ int get_cl_args( int argc, const char **argv,
 int main( int argc, const char **argv){
   int n, status;
   char parameter_filename[80];
+  char output_filename[95];
 
   status = get_cl_args( argc, argv, parameter_filename, &n);
   if( status != 0){
@@ -40,7 +43,6 @@ int main( int argc, const char **argv){
   /******************************************************
    * Simulation Initialization
    */
-
   simulation sim;
   en_params enp;
   sim.enp = &enp;
@@ -50,6 +52,9 @@ int main( int argc, const char **argv){
     usage( argv[0]);
     return status;
   }
+
+  sprintf( output_filename, "%s_%03d.f5", parameter_filename, n);
+  file_handle *output = open_output_file( &sim, output_filename, sim.num_steps+1);
 
   fprintf( stdout, "Read from parameter file : %s\n", parameter_filename);
   fprintf( stdout, " Nm = %d\n", sim.Nm);
@@ -74,43 +79,37 @@ int main( int argc, const char **argv){
   sim.kdtree = kd_tree_malloc( sim.Nm);
   polymer_linear( sim.poly, sim.Nm, sim.rng);
   kd_tree_fill( sim.kdtree, sim.Nm, sim.poly->positions);
-  uint16 *kdarray = (uint16 *) malloc( 4*sim.Nm*sizeof(uint16));
 
-  uint16 max_depth = (uint16) (log2( (double) sim.Nm) + sqrt( (double) sim.Nm) +1.0);
+  uint16 max_depth = (uint16) (log2( (double) sim.Nm) + sqrt( (double) sim.Nm) + 1.0);
 
   /****************************************************************
    * Write the initial data
    */
-  file_handle *output = open_output_file( &sim, "file.h5", sim.num_steps+1);
-  kd_tree_to_array( sim.kdtree, kdarray);
-  write_kdtree_data(output, kdarray);
-  write_bond_data(output, sim.poly->bonds);
-  write_position_data(output, sim.poly->positions);
+  write_parameters( output, &sim);
+  double en = energy( &sim);
+  write_polymer_state( output, &sim, en);
 
   /****************************************************************
    * Run the simulation
    */
   int i, j;
   for( i=0; i<sim.num_steps; i++){
-    // 10 steps per gibbs step
-    for( j=0; j<10; j++){
+    // INTERNAL_STEPS steps per gibbs step
+    for( j=0; j<INTERNAL_STEPS; j++){
       gibbs_step( &sim);
     }
     // Check if tree is too unbalanced
     if( sim.kdtree->max_depth > max_depth ){
       kd_tree_fill( sim.kdtree, sim.Nm, sim.poly->positions);
     }
-    kd_tree_to_array( sim.kdtree, kdarray);
-    write_kdtree_data(output, kdarray);
-    write_bond_data(output, sim.poly->bonds);
-    write_position_data(output, sim.poly->positions);
+    en = energy( &sim);
+    write_polymer_state( output, &sim, en);
   }
 
   /****************************************************************
    * Close the simulation
    */
   close_output_file( output);
-  free( kdarray);
   kd_tree_free( sim.kdtree);
   polymer_free( sim.poly);
   return status;

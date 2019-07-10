@@ -159,63 +159,77 @@ struct file_handle{
 file_handle* open_output_file( simulation *sim, const char *filename,
 							   uint16 num_slices){
 	hid_t outfile;
+	hid_t space, data;
+	hsize_t dims[3];
 
 	// Create the file
 	outfile = H5Fcreate( filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
 
 	// Create the position dataset in the file
-	hid_t pspace, pdata;
-	int prank = 3;
-	hsize_t pdims[3] = {num_slices, sim->Nm, 3};
+	dims[0] = num_slices;
+	dims[1] = sim->Nm,
+	dims[2] = 3;
 
-	pspace = H5Screate_simple( prank, pdims, NULL);
-    pdata = H5Dcreate( outfile, "positions", 
-                       H5T_IEEE_F64LE, pspace,
-                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+	space = H5Screate_simple( 3, dims, NULL);
+    data = H5Dcreate( outfile, "positions", H5T_IEEE_F64LE, 
+                      space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
-	if( H5Sclose( pspace) < 0 ){
+	if( H5Sclose( space) < 0 ){
 		fprintf(stderr, "Error closing HDF5 data space./n");
 		return NULL;
 	}
-	if( H5Dclose( pdata) < 0 ){
+	if( H5Dclose( data) < 0 ){
 		fprintf(stderr, "Error closing HDF5 dataset/n");
 		return NULL;		
 	}
 
-	// Create the bonds dataset in the file
-	hid_t bspace, bdata;
-	int brank = 3;
-	hsize_t bdims[3] = {num_slices, sim->Nm-1, 2};
+	dims[0] = num_slices;
+	dims[1] = sim->Nm-1;
+	dims[2] = 2;
+	
+	space = H5Screate_simple( 3, dims, NULL);
+    data = H5Dcreate( outfile, "bonds", H5T_STD_U16LE, space,
+                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
-	bspace = H5Screate_simple( brank, bdims, NULL);
-    bdata = H5Dcreate( outfile, "bonds", 
-                       H5T_STD_U16LE, bspace,
-                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-	if( H5Sclose( bspace) < 0 ){
+	if( H5Sclose( space) < 0 ){
 		fprintf(stderr, "Error closing HDF5 data space./n");
 		return NULL;
 	}
-	if( H5Dclose( bdata) < 0 ){
+	if( H5Dclose( data) < 0 ){
 		fprintf(stderr, "Error closing HDF5 dataset/n");
 		return NULL;	
 	}
 
 	// Create the kdtree dataset in the file
-	hid_t kspace, kdata;
-	int krank = 3;
-	hsize_t kdims[3] = {num_slices, sim->Nm, 4};
+	dims[0] = num_slices;
+	dims[1] = sim->Nm;
+	dims[2] = 4;
 
-	kspace = H5Screate_simple( krank, kdims, NULL);
-    kdata = H5Dcreate( outfile, "kdtree", 
-                       H5T_STD_U16LE, kspace,
-                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+	space = H5Screate_simple( 3, dims, NULL);
+    data = H5Dcreate( outfile, "kdtree", H5T_STD_U16LE, space,
+                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
-	if( H5Sclose( kspace) < 0 ){
+	if( H5Sclose( space) < 0 ){
 		fprintf(stderr, "Error closing HDF5 data space./n");
 		return NULL;
 	}
-	if( H5Dclose( kdata) < 0 ){
+	if( H5Dclose( data) < 0 ){
+		fprintf(stderr, "Error closing HDF5 dataset/n");
+		return NULL;	
+	}
+
+	// Create the energy dataset
+	dims[0] = num_slices;
+
+	space = H5Screate_simple( 1, dims, NULL);
+	data = H5Dcreate( outfile, "energy", H5T_IEEE_F64LE, space,
+					  H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+	if( H5Sclose( space) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return NULL;
+	}
+	if( H5Dclose( data) < 0 ){
 		fprintf(stderr, "Error closing HDF5 dataset/n");
 		return NULL;	
 	}
@@ -234,6 +248,205 @@ int close_output_file( file_handle *ofile){
 	}
 	free(ofile);
 	return 0;
+}
+
+int write_att( file_handle *ofile, char *name, enum datatype type, void *val){
+	hid_t file, data, space, attr;
+
+	double *f_val;
+	uint16 *u_val;
+
+	file = ofile->outfile;
+
+	data = H5Dopen2(file, "/positions", H5P_DEFAULT);
+	if( data < 0 ){
+		fprintf(stderr, "Error opening HDF5 dataset/n");
+		return -1;
+	}
+
+	space = H5Screate(H5S_SCALAR);
+
+	if( type == T_DOUBLE){
+		attr = H5Acreate2( data, name, H5T_IEEE_F64LE, space,
+					   H5P_DEFAULT, H5P_DEFAULT);
+		f_val = (double *) val;
+		H5Awrite(attr, H5T_NATIVE_DOUBLE, f_val);
+	}else{
+		attr = H5Acreate2( data, name, H5T_STD_U16LE, space,
+					   H5P_DEFAULT, H5P_DEFAULT);
+		u_val = (uint16 *) val;
+		H5Awrite(attr, H5T_NATIVE_UINT_FAST16, u_val);
+	}
+
+	if( H5Sclose( space ) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Aclose( attr ) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Dclose( data) < 0 ){
+		fprintf(stderr, "Error closing HDF5 dataset/n");
+		return -1;
+	}
+	return 0;
+}
+
+int write_2D_slab( file_handle *ofile, const char *name, int set_num, 
+				   enum datatype type, void *array){
+	hid_t file, data, space, memspace;
+
+	hsize_t dims[3], memdims[2];
+	hsize_t maxdims[3];
+
+	double *f_array;
+	uint16 *u_array;
+
+	file = ofile->outfile;
+
+	data = H5Dopen2(file, name, H5P_DEFAULT);
+	if( data < 0 ){
+		fprintf(stderr, "Error opening HDF5 dataset/n");
+		return -1;
+	}
+
+	space = H5Dget_space( data);
+	if( space < 0 ){
+		fprintf(stderr, "Error opening HDF5 data space/n");
+		return -1;
+	}
+
+	// rank = H5Sget_simple_extent_ndims( space);
+	H5Sget_simple_extent_dims(space, dims, maxdims);
+
+	memdims[0] = dims[1];
+	memdims[1] = dims[2];
+	memspace = H5Screate_simple( 2, memdims, NULL);	
+
+	hsize_t offset[3], count[3];
+	hsize_t stride[] = {1,1,1};
+	hsize_t block[] = {1,1,1};
+	offset[0] = set_num;
+	offset[1] = 0;
+	offset[2] = 0;
+	count[0] = 1;
+	count[1] = dims[1];
+	count[2] = dims[2];
+
+	H5Sselect_hyperslab( space, H5S_SELECT_SET,
+						 offset, stride, count, block);
+
+	if( type == T_DOUBLE){
+		f_array = (double *) array;
+		H5Dwrite( data, H5T_NATIVE_DOUBLE, memspace, 
+				  space, H5P_DEFAULT, f_array);
+	}else{
+		u_array = (uint16 *) array;
+		H5Dwrite( data, H5T_NATIVE_UINT_FAST16, memspace, 
+				  space, H5P_DEFAULT, u_array);
+	}
+
+	if( H5Sclose( memspace) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Sclose( space) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Dclose( data) < 0 ){
+		fprintf(stderr, "Error closing HDF5 dataset/n");
+		return -1;
+	}
+	return 0;
+}
+
+int write_val( file_handle *ofile, char *name, int set_num, 
+			   enum datatype type, void *val){
+	hid_t file, data, space, memspace;
+
+	hsize_t pos = set_num;
+
+	double *f_val;
+	uint16 *u_val;
+
+	file = ofile->outfile;
+
+	data = H5Dopen2(file, name, H5P_DEFAULT);
+	if( data < 0 ){
+		fprintf(stderr, "Error opening HDF5 dataset/n");
+		return -1;
+	}
+
+	space = H5Dget_space( data);
+	if( space < 0 ){
+		fprintf(stderr, "Error opening HDF5 data space/n");
+		return -1;
+	}
+
+	memspace = H5Screate(H5S_SCALAR);
+
+	H5Sselect_elements( space, H5S_SELECT_SET, 1, &pos);
+
+	if( type == T_DOUBLE){
+		f_val = (double *) val;
+		H5Dwrite( data, H5T_NATIVE_DOUBLE, memspace, 
+				  space, H5P_DEFAULT, f_val);
+	}else{
+		u_val = (uint16 *) val;
+		H5Dwrite( data, H5T_NATIVE_UINT_FAST16, memspace, 
+				  space, H5P_DEFAULT, u_val);
+	}
+
+	if( H5Sclose( memspace) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Sclose( space) < 0 ){
+		fprintf(stderr, "Error closing HDF5 data space./n");
+		return -1;
+	}
+
+	if( H5Dclose( data) < 0 ){
+		fprintf(stderr, "Error closing HDF5 dataset/n");
+		return -1;
+	}
+	return 0;
+}
+
+void write_parameters( file_handle *ofile, simulation *sim){
+	write_att( ofile, "seed", T_UINT, &sim->seed);
+	write_att( ofile, "num_monomers", T_UINT, &sim->Nm);
+	write_att( ofile, "num_steps", T_UINT, &sim->num_steps);
+
+	en_params *enp = (en_params *) sim->enp;
+	write_att( ofile, "FENE_k", T_DOUBLE, &enp->k);
+	write_att( ofile, "FENE_a", T_DOUBLE, &enp->a);
+	write_att( ofile, "TLJ_ep", T_DOUBLE, &enp->ep);
+	write_att( ofile, "TLJ_sig", T_DOUBLE, &enp->sig);
+
+	write_att( ofile, "r_max", T_DOUBLE, &sim->lim.r_max);
+	write_att( ofile, "r_min", T_DOUBLE, &sim->lim.r_min);
+	write_att( ofile, "r_cutoff", T_DOUBLE, &sim->lim.r_co);
+}
+
+void write_polymer_state( file_handle *ofile, simulation *sim, double en){
+	uint16 *kdarray = (uint16 *) malloc( 4*sim->Nm*sizeof(uint16));
+	kd_tree_to_array(sim->kdtree, kdarray);
+
+	write_2D_slab( ofile, "/positions", ofile->current_size, T_DOUBLE, sim->poly->positions);
+	write_2D_slab( ofile, "/bonds", ofile->current_size, T_UINT, sim->poly->bonds);
+	write_2D_slab( ofile, "/kdtree", ofile->current_size, T_UINT, kdarray);
+	write_val( ofile, "/energy", ofile->current_size, T_DOUBLE, &en);
+
+	ofile->current_size++;
+	free(kdarray);
 }
 
 // int write_kdtree_data( file_handle *ofile, uint16 *kdarray){
@@ -303,6 +516,63 @@ int close_output_file( file_handle *ofile){
 // 	return 0;
 // }
 
+//enum datatype{ T_UINT, T_DOUBLE};
+
+// int write_int_slab( file_handle *ofile, char *name, 
+// 					int set_num, uint16 *data){
+// 	hid_t file, data, space, memspace;
+
+// 	hsize_t dims[3], memdims[2];
+// 	hsize_t maxdims[3];
+
+// 	file = ofile->outfile;
+
+// 	data = H5Dopen2(file, name, H5P_DEFAULT);
+// 	if( data < 0 ){
+// 		fprintf(stderr, "Error opening HDF5 dataset/n");
+// 		return -1;
+// 	}
+
+// 	space = H5Dget_space( data);
+// 	if( space < 0 ){
+// 		fprintf(stderr, "Error opening HDF5 data space/n");
+// 		return -1;
+// 	}
+
+// 	// rank = H5Sget_simple_extent_ndims( space);
+// 	H5Sget_simple_extent_dims(space, dims, maxdims);
+
+// 	memdims[0] = dims[1];
+// 	memdims[1] = dims[2];
+// 	memspace = H5Screate_simple( 2, memdims, NULL);	
+
+// 	hsize_t offset[3], count[3];
+// 	hsize_t stride[] = {1,1,1};
+// 	hsize_t block[] = {1,1,1};
+// 	offset[0] = set_num;
+// 	offset[1] = 0;
+// 	offset[2] = 0;
+// 	count[0] = 1;
+// 	count[1] = dims[1];
+// 	count[2] = dims[2];
+
+// 	H5Sselect_hyperslab( space, H5S_SELECT_SET,
+// 						 offset, stride, count, block);
+
+// 	H5Dwrite( data, H5T_NATIVE_UINT_FAST16, memspace, space, H5P_DEFAULT, data);
+
+// 	if( H5Sclose( space) < 0 ){
+// 		fprintf(stderr, "Error closing HDF5 data space./n");
+// 		return -1;
+// 	}
+
+// 	if( H5Dclose( data) < 0 ){
+// 		fprintf(stderr, "Error closing HDF5 dataset/n");
+// 		return -1;
+// 	}
+// 	return 0;
+// }
+
 int write_position_data( file_handle *ofile, double *positions){
 	hid_t file, data, space, memspace;
 
@@ -334,7 +604,6 @@ int write_position_data( file_handle *ofile, double *positions){
 	hsize_t stride[] = {1,1,1};
 	hsize_t block[] = {1,1,1};
 	offset[0] = ofile->current_size;
-	ofile->current_size++;
 	offset[1] = 0;
 	offset[2] = 0;
 	count[0] = 1;

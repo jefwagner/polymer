@@ -152,8 +152,8 @@ typedef struct {
   int seed;
   int Nm;
   int num_steps;
-  void *enp;
   limits lim; 
+  void *enp;
 
   uint64_t rng[2];
   polymer *poly;
@@ -168,16 +168,21 @@ int read_parameter_file( simulation* sim,
                          unsigned int n);
 
 typedef struct file_handle file_handle;
+enum datatype{ T_UINT, T_DOUBLE};
 
 file_handle* open_output_file( simulation *sim, 
 							   const char *filename,
 							   uint16 num_slices);
 int close_output_file( file_handle *ofile);
 
-int write_bond_data( file_handle *ofile, uint16 *bonds);
-int write_kdtree_data( file_handle *ofile, uint16 *kdarray);
-int write_position_data( file_handle *ofile, double *positions);
+// int write_2D_slab( file_handle *ofile, const char *name, int set_num, 
+// 				   enum datatype type, void *array);
+// int write_bond_data( file_handle *ofile, uint16 *bonds);
+// int write_kdtree_data( file_handle *ofile, uint16 *kdarray);
+// int write_position_data( file_handle *ofile, double *positions);
 
+void write_parameters( file_handle *ofile, simulation *sim);
+void write_polymer_state( file_handle *ofile, simulation *sim, double en);
 
 /********************************************************************
  * 

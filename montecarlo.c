@@ -1,10 +1,18 @@
 #include <math.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "polymer.h"
 #include "rng.c"
 #include "vec3.h"
+
+// This function swaps two uint16 values
+static inline void swap( uint16 *a, uint16 *b){
+	uint16 c = *a;
+	*a = *b;
+	*b = c;
+}
 
 static void disk( uint64_t *rng, double *o){
 	do{
@@ -145,10 +153,6 @@ void rand3( uint64_t *rng, double r_min, double r_max,
 
 #define NEIGHBOR_MAX 20
 
-int is_nan( double x){
-	return isnan(x);
-}
-
 double delta_en( simulation *sim, uint16 monomer, double *pos){
 	polymer *poly = sim->poly;
 	uint16 num_b = poly->num_bonds[monomer];
@@ -167,17 +171,7 @@ double delta_en( simulation *sim, uint16 monomer, double *pos){
 		bond = poly->list_bonds[NB_MAX*monomer+i];
 		other = linked_monomer(&poly->bonds[2*bond], monomer);
 		other_pos = &poly->positions[DIM*other];
-		// en = E_bond(pos, other_pos, sim->enp);
-		// 	if( isnan(en) ){
-		// 		en += 1.0;
-		// 	}
-		// en_new += en;
 		en_new += E_bond( pos, other_pos, sim->enp);
-		// en = E_bond(old_pos, other_pos, sim->enp);
-		// 	if( isnan(en) ){
-		// 		en += 1.0;
-		// 	}
-		// en_old += en;
 		en_old += E_bond( old_pos, other_pos, sim->enp);
 	}
 
@@ -188,11 +182,6 @@ double delta_en( simulation *sim, uint16 monomer, double *pos){
 	for( i=0; i<num_nei; i++){
 		if( neighbors[i] != monomer ){
 			other_pos = &poly->positions[DIM*neighbors[i]];
-			// en = E_pair( pos, other_pos, sim->enp);
-			// if( isnan(en) ){
-			// 	en += 1.0;
-			// }
-			// en_new += en;
 			en_new += E_pair( pos, other_pos, sim->enp);
 		}
 	}
@@ -202,11 +191,6 @@ double delta_en( simulation *sim, uint16 monomer, double *pos){
 	for( i=0; i<num_nei; i++){
 		if( neighbors[i] != monomer ){
 			other_pos = &poly->positions[DIM*neighbors[i]];
-			// en = E_pair( old_pos, other_pos, sim->enp);
-			// if( isnan(en) ){
-			// 	en += 1.0;
-			// }
-			// en_old += en;
 			en_old += E_pair( old_pos, other_pos, sim->enp);
 		}
 	}
@@ -281,14 +265,14 @@ void mh_step( simulation *sim, uint16 monomer){
 
  	  kd_move( sim->kdtree, monomer, new);
 
- 	  uint16 i;
- 	  kd_node *t1;
- 	  for( i=0; i<sim->Nm; i++){
- 	  	t1 = kd_find( sim->kdtree, sim->kdtree->root, i);
- 	  	if( t1 == NULL ){
- 	  		fprintf( stdout, "lost monomer %lu !\n", i);
- 	  	}
- 	  }
+ 	  // uint16 i;
+ 	  // kd_node *t1;
+ 	  // for( i=0; i<sim->Nm; i++){
+ 	  // 	t1 = kd_find( sim->kdtree, sim->kdtree->root, i);
+ 	  // 	if( t1 == NULL ){
+ 	  // 		fprintf( stdout, "lost monomer %lu !\n", i);
+ 	  // 	}
+ 	  // }
  	}
 }
 
@@ -297,6 +281,49 @@ void gibbs_step( simulation *sim){
 	for( i=0; i<sim->Nm; i++){
 		mh_step( sim, i);
 	}	
+}
+
+void gibbs_step2( simulation *sim){
+	uint16 i, j, *order;
+
+ 	// Do a Fisher-Yates shuffle to go through the polymer in random order
+	order = (uint16 *) malloc( sim->Nm*sizeof(uint16));
+ 	for( i=0; i<sim->Nm; i++){
+ 	  order[i] = i;
+ 	}
+ 	for( i=sim->Nm; i>1; i--){
+ 		j = rng_next(sim->rng)%i;
+ 		swap( &order[j], &order[i-1]);
+ 	}
+
+	for( i=0; i<sim->Nm; i++){
+		mh_step( sim, order[i]);
+	}	
+
+	free(order);
+}
+
+void fill_order( kd_tree *kdt, kd_node *node, 
+				 uint16 *order, uint16 *filled ){
+	if( node->left != NULL ){
+		fill_order( kdt, node->left, order, filled);
+	}
+	if( node->right != NULL ){
+		fill_order( kdt, node->right, order, filled);
+	}
+	order[*filled] = node->monomer;
+	filled++;
+}
+
+void gibbs_step3( simulation *sim){
+	uint16 i, *order, filled;
+	order = (uint16 *) malloc( sim->Nm*sizeof(uint16));
+	filled = 0;
+	fill_order( sim->kdtree, sim->kdtree->root, order, &filled);
+
+	for( i=0; i<sim->Nm; i++){
+		mh_step( sim, order[i]);
+	}
 }
 
 // void gibbs_step( simulation *sim){
